@@ -1,22 +1,38 @@
-name: Windows - LiteManager
+name: Windows - RDP Access
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Start Building ..
+  rdp:
+    name: Set up RDP Access
     runs-on: windows-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Run Downloads.bat
-        run: cmd /c Downloads.bat
+      - name: Download Ngrok
+        run: |
+          Invoke-WebRequest -Uri https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+          Expand-Archive ngrok.zip -DestinationPath $env:USERPROFILE
 
-      - name: Connect to LiteManager
-        run: cmd /c show.bat
+      - name: Authenticate Ngrok
+        run: |
+          $NGROK_AUTH = "YOUR_NGROK_AUTHTOKEN_HERE"
+          & "$env:USERPROFILE\ngrok.exe" authtoken $NGROK_AUTH
 
-      - name: Time Counter
-        run: cmd /c loop.bat
+      - name: Enable RDP and set password
+        run: |
+          net user runneradmin "YourPassword123"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+      - name: Start Ngrok TCP Tunnel
+        run: |
+          Start-Process -NoNewWindow -FilePath "$env:USERPROFILE\ngrok.exe" -ArgumentList "tcp 3389"
+
+      - name: Show Connection Info
+        run: |
+          Start-Sleep -Seconds 10
+          Invoke-RestMethod -Uri http://127.0.0.1:4040/api/tunnels | ConvertTo-Json -Depth 5
