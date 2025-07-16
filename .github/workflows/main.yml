@@ -5,34 +5,46 @@ on:
 
 jobs:
   rdp:
-    name: Set up RDP Access
+    name: Start RDP Session
     runs-on: windows-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Download Ngrok
+      - name: Set up Ngrok and RDP
         run: |
+          # Set RDP password
+          net user runneradmin "YourSecurePassword123"
+          
+          # Enable RDP
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+          
+          # Enable firewall rules
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Download and unzip Ngrok
           Invoke-WebRequest -Uri https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
           Expand-Archive ngrok.zip -DestinationPath $env:USERPROFILE
+          
+          # Add Ngrok to PATH (for current session)
+          $env:Path += ";$env:USERPROFILE"
+          
+          # Set Ngrok authtoken (REPLACE THIS VALUE!)
+          & "$env:USERPROFILE\ngrok.exe" authtoken YOUR_NGROK_AUTHTOKEN_HERE
+          
+          # Start Ngrok tunnel in background
+          Start-Process "$env:USERPROFILE\ngrok.exe" -ArgumentList "tcp 3389" -NoNewWindow
 
-      - name: Authenticate Ngrok
-        run: |
-          $NGROK_AUTH = "YOUR_NGROK_AUTHTOKEN_HERE"
-          & "$env:USERPROFILE\ngrok.exe" authtoken $NGROK_AUTH
-
-      - name: Enable RDP and set password
-        run: |
-          net user runneradmin "YourPassword123"
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-
-      - name: Start Ngrok TCP Tunnel
-        run: |
-          Start-Process -NoNewWindow -FilePath "$env:USERPROFILE\ngrok.exe" -ArgumentList "tcp 3389"
-
-      - name: Show Connection Info
-        run: |
           Start-Sleep -Seconds 10
-          Invoke-RestMethod -Uri http://127.0.0.1:4040/api/tunnels | ConvertTo-Json -Depth 5
+          
+          # Fetch tunnel info
+          $tunnel = Invoke-RestMethod -Uri http://127.0.0.1:4040/api/tunnels
+          $public_url = $tunnel.tunnels.public_url
+          Write-Host "🔗 RDP URL: $public_url"
+          Write-Host "👤 Username: runneradmin"
+          Write-Host "🔒 Password: YourSecurePassword123"
+
+      - name: Keep Runner Alive (1 Hour)
+        run: |
+          for ($i = 0; $i -lt 3600; $i++) {
+            Write-Host "⏳ $i seconds elapsed. Waiting for RDP connection..."
+            Start-Sleep -Seconds 1
+          }
